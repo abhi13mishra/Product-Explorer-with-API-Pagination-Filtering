@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Product Explorer</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f4f4f4;
+        }
+
+        h1 {
+            text-align: center;
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        select,
+        input {
+            padding: 5px;
+            font-size: 16px;
+            border-radius: 5px;
+            background-color: rgb(178, 223, 189);
+            border: 2px solid black;
+         }
+
+        .filters {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .filters button {
+            padding: 6px 12px;
+            background-color: #0a2d53;
+            border: none;
+            cursor: pointer;
+        }
+
+        .filters button.active {
+            background-color: #6006f0;
+            color: white;
+        }
+
+        #products-container {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+        }
+
+        .product-card {
+            background: white;
+            padding: 10px;
+            border-radius: 6px;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        .product-card img {
+            max-height: 150px;
+            object-fit: contain;
+            width: 100%;
+        }
+
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-top: 20px;
+            gap: 10px;
+        }
+
+        button {
+            padding: 6px 12px;
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Product Explorer</h1>
+
+    <div class="controls">
+        <input type="text" id="search" placeholder="Search product title..." />
+        <select id="sort">
+            <option value="">Sort By</option>
+            <option value="low-high">Price: Low to High</option>
+            <option value="high-low">Price: High to Low</option>
+            <option value="title">Title A-Z</option>
+        </select>
+    </div>
+
+    <div class="filters" id="category-filters"></div>
+
+    <div id="products-container"></div>
+
+    <div class="pagination">
+        <button id="prev">Previous</button>
+        <span id="page-no">1</span>
+        <button id="next">Next</button>
+    </div>
+
+    <script>
+        let allProducts = [];
+        let filteredProducts = [];
+        let currentPage = parseInt(localStorage.getItem("page")) || 1;
+        const productsPerPage = 8;
+
+        const container = document.getElementById("products-container");
+        const pageNo = document.getElementById("page-no");
+        const searchInput = document.getElementById("search");
+        const sortSelect = document.getElementById("sort");
+        const filtersDiv = document.getElementById("category-filters");
+
+        async function fetchProducts() {
+            const res = await fetch("https://fakestoreapi.com/products");
+            allProducts = await res.json();
+            filteredProducts = [...allProducts];
+            renderFilters();
+            applyAll();
+        }
+
+        function applyAll() {
+            let data = [...filteredProducts];
+            data = applySearch(data);
+            data = applySort(data);
+            renderProducts(paginate(data));
+        }
+
+        function paginate(data) {
+            const start = (currentPage - 1) * productsPerPage;
+            const end = start + productsPerPage;
+            pageNo.innerText = currentPage;
+            localStorage.setItem("page", currentPage);
+            return data.slice(start, end);
+        }
+
+        function renderProducts(products) {
+            container.innerHTML = "";
+            if (products.length === 0) {
+                container.innerHTML = "<h3>No products found</h3>";
+                return;
+            }
+            products.forEach(p => {
+                container.innerHTML += `
+          <div class="product-card">
+            <img src="${p.image}" alt="${p.title}">
+            <h4>${p.title}</h4>
+            <p>₹${p.price}</p>
+            <p><small>${p.category}</small></p>
+          </div>
+        `;
+            });
+        }
+
+        function applySort(data) {
+            const type = sortSelect.value;
+            if (type === "low-high") return data.sort((a, b) => a.price - b.price);
+            if (type === "high-low") return data.sort((a, b) => b.price - a.price);
+            if (type === "title") return data.sort((a, b) => a.title.localeCompare(b.title));
+            return data;
+        }
+
+        function renderFilters() {
+            const categories = [...new Set(allProducts.map(p => p.category))];
+            filtersDiv.innerHTML = "";
+            categories.forEach(cat => {
+                const btn = document.createElement("button");
+                btn.innerText = cat;
+                btn.onclick = () => {
+                    if (btn.classList.contains("active")) {
+                        btn.classList.remove("active");
+                        filteredProducts = [...allProducts];
+                    } else {
+                        document.querySelectorAll(".filters button").forEach(b => b.classList.remove("active"));
+                        btn.classList.add("active");
+                        filteredProducts = allProducts.filter(p => p.category === cat);
+                        currentPage = 1;
+                    }
+                    applyAll();
+                };
+                filtersDiv.appendChild(btn);
+            });
+        }
+
+        function applySearch(data) {
+            const query = searchInput.value.toLowerCase();
+            if (!query) return data;
+            return data.filter(p => p.title.toLowerCase().includes(query));
+        }
+
+        document.getElementById("next").onclick = () => {
+            const total = Math.ceil(filteredProducts.length / productsPerPage);
+            if (currentPage < total) {
+                currentPage++;
+                applyAll();
+            }
+        };
+
+        document.getElementById("prev").onclick = () => {
+            if (currentPage > 1) {
+                currentPage--;
+                applyAll();
+            }
+        };
+
+        sortSelect.onchange = () => {
+            currentPage = 1;
+            applyAll();
+        };
+
+        let timer;
+        searchInput.oninput = () => {
+            clearTimeout(timer);
+            timer = setTimeout(() => {
+                currentPage = 1;
+                applyAll();
+            }, 1000);
+        };
+
+        fetchProducts();
+    </script>
+</body>
+
+</html>
